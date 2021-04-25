@@ -1,0 +1,27 @@
+stages:
+    - build
+    - deploy
+
+build-image:
+    image: docker:latest
+    stage: build
+    services:
+        - docker:dind
+    before_script:
+        - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    script:
+        - docker build -t "$CI_REGISTRY_IMAGE:latest" .
+        - docker push "$CI_REGISTRY_IMAGE:latest"
+  
+deploy-to-aws:
+    stage: deploy
+    image: alpine:latest
+    before_script:
+        - apk update && apk add --no-cache openssh
+        - mkdir -p ~/.ssh
+        - echo "$ID_RSA" | tr -d '\r' > ~/.ssh/id_rsa
+        - chmod 700 ~/.ssh/id_rsa
+        - eval "$(ssh-agent -s)"
+        - ssh-add ~/.ssh/id_rsa
+    script:
+        - ssh ${SSH_USER}@${IP_SERVER} "docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY && docker pull $CI_REGISTRY_IMAGE && docker run -d -p 8080:80 --name nginx-test $CI_REGISTRY_IMAGE"
